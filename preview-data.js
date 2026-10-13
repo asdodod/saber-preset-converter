@@ -1,6 +1,6 @@
-import {lower,fromBase64,evaluateCurve,lerp,clamp} from './engine.js?v=20261013-4';
-import {matrix,multiply,identity} from './math.js?v=20261013-4';
-import * as s from './schema.js?v=20261013-4';
+import {lower,fromBase64,evaluateCurve,lerp,clamp} from './engine.js?v=20261013-5';
+import {matrix,multiply,identity} from './math.js?v=20261013-5';
+import * as s from './schema.js?v=20261013-5';
 
 export function previewAssets(parsed,resources=new Map()){
   const assets=new Map(parsed.assets);for(const [name,bytes] of resources)assets.set(name,bytes);

@@ -1,8 +1,8 @@
 import * as T from './vendor/three.module.js';
 import {OrbitControls} from './vendor/OrbitControls.js';
-import {buildPreview,tubeBuffers,assetBytes,gradient} from './preview-data.js?v=20261013-4';
-import {evaluateCurve,clamp,lower,lerp} from './engine.js?v=20261013-4';
-import * as s from './schema.js?v=20261013-4';
+import {buildPreview,tubeBuffers,assetBytes,gradient} from './preview-data.js?v=20261013-5';
+import {evaluateCurve,clamp,lower,lerp} from './engine.js?v=20261013-5';
+import * as s from './schema.js?v=20261013-5';
 
 const vertex=`attribute vec3 tint;attribute vec3 values;uniform float clipOffset;varying vec3 vColor;varying vec3 vValues;varying vec2 vUv;varying vec3 vNormal;varying vec3 vWorld;varying vec3 vBlade;
 void main(){vColor=tint;vValues=values;vUv=uv;vec4 p=modelMatrix*vec4(position,1.);vWorld=p.xyz;vNormal=normalize(mat3(modelMatrix)*normal);vBlade=normalize(mat3(modelMatrix)*vec3(0.,0.,1.));gl_Position=projectionMatrix*viewMatrix*p;gl_Position.z+=clipOffset;}`;
@@ -14,7 +14,7 @@ vec3 shiftHue(vec3 c,float a){vec3 axis=normalize(vec3(1.));float x=cos(a),y=sin
 void main(){vec3 N=normalize(vNormal),V=normalize(cameraPosition-vWorld);float f=1.-abs(dot(N,V));vec3 np=N-vBlade*dot(N,vBlade),vp=V-vBlade*dot(V,vBlade);float fp=1.-clamp(dot(normalize(np+vec3(1e-8)),normalize(vp+vec3(1e-8))),0.,1.);f=mix(f,fp,rimPerpendicular);
 float coord=kind==0?f:acos(clamp(dot(N,V),-1.,1.))/3.14159265;vec4 am=texture2D(angleMap,vec2(clamp(coord,0.,1.),.5));float ag=texture2D(angleGlow,vec2(clamp(coord,0.,1.),.5)).r;
 vec2 uv=vUv*tiling.xy+tiling.zw;vec4 tex=texture2D(albedo,uv),g=texture2D(glowMap,uv);float opacity=clamp(vValues.y*tex.a*texture2D(opacityMap,uv).r*am.a*strength,0.,1.);
-vec3 rgb=kind==0?mix(vColor,gameColor*.8,clamp(vValues.z,0.,1.)):shiftHue(vColor,hue);rgb*=tex.rgb*am.rgb;float glow=kind==0?vValues.x+ag:vValues.x*ag;glow=max(0.,glow*g.r*(kind==0?g.a:1.));
+vec3 rgb=kind==0?mix(vColor,gameColor*.8,clamp(vValues.z,0.,1.)):shiftHue(vColor,hue);rgb*=tex.rgb*(kind==0?max(vec3(0.),am.rgb):am.rgb);float glow=kind==0?vValues.x+ag:vValues.x*ag;glow=max(0.,glow*g.r*(kind==0?g.a:1.));
 if(lit>0.){float light=.28+.58*max(0.,dot(N,normalize(vec3(.6,.7,1.))));float spec=pow(max(0.,dot(reflect(-normalize(vec3(.6,.7,1.)),N),V)),24.)*.35;rgb=rgb*light+vec3(spec);}
 if(pass==1){if(kind==0&&opacity<.999)discard;gl_FragColor=vec4(0.);return;}
 if(pass==2){gl_FragColor=vec4(max(vec3(0.),rgb)*glow*opacity,1.);return;}

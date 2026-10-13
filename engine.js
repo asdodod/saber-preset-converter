@@ -1,7 +1,7 @@
-import {unzipSync,zipSync,strToU8,strFromU8,zlibSync} from './vendor/fflate.js?v=20261013-4';
-import * as s from './schema.js?v=20261013-4';
-import {identity,matrix,multiply,point,decompose,vector} from './math.js?v=20261013-4';
-import {decodeImage,imageSample} from './textures.js?v=20261013-4';
+import {unzipSync,zipSync,strToU8,strFromU8,zlibSync} from './vendor/fflate.js?v=20261013-5';
+import * as s from './schema.js?v=20261013-5';
+import {identity,matrix,multiply,point,decompose,vector} from './math.js?v=20261013-5';
+import {decodeImage,imageSample} from './textures.js?v=20261013-5';
 export {zipSync,strToU8};
 export const MAX_BYTES=128*1024*1024;
 export const clamp=(v,lo=0,hi=1)=>Math.max(lo,Math.min(hi,Number(v)));
