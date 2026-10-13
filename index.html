@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Convert VainSabers and ReeSabers presets locally in your browser, in both directions.">
+  <meta name="theme-color" content="#161618"><title>VainSabers / ReeSabers converter</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="converter">
+    <header><h1>VainSabers / ReeSabers converter</h1></header>
+    <div class="direction-tabs" role="group" aria-label="Conversion direction">
+      <button class="active" data-direction="ree">VainSabers <span>→</span> ReeSabers</button>
+      <button data-direction="vain">ReeSabers <span>→</span> VainSabers</button>
+    </div>
+    <button class="dropzone" id="dropzone"><strong>Drop preset files</strong><span>or choose files</span><small>.json · .vainsaber · .reesaber</small></button>
+    <input id="preset-input" type="file" accept=".json,.vainsaber,.reesaber" multiple hidden>
+    <div class="list-heading"><span><span>Files</span> <span id="file-count">0</span></span><button id="clear" class="text-button" >Clear</button></div>
+    <div id="file-list" class="file-list"></div>
+    <div class="file-actions"><button id="add-files" class="text-button" >Add files</button></div>
+    <details class="settings"><summary >Settings</summary><div class="settings-body">
+      <div class="target-card hidden"><span id="target-name">ReeSabers</span><span id="target-ext">.reesaber · v0.3.20</span></div>
+      <div class="field-row"><label for="fps" >VR refresh rate</label><div class="number-field"><input id="fps" type="number" min="30" max="240" value="90"><span>Hz</span></div></div>
+      <div class="field-row"><label for="blur-ms" >Vain blur time</label><div class="number-field"><input id="blur-ms" type="number" min="0" max="25" value="25"><span>ms</span></div></div>
+      <div class="resource-row"><button id="add-assets" >Add resources</button><span id="asset-count" >0 resources</span><span class="asset-status hidden"><span class="dot muted"></span></span></div>
+      <input id="asset-input" type="file" accept=".png,.jpg,.jpeg,.webp,.tga,.bmp,.obj,.glb" multiple hidden>
+      <label class="check-row"><input id="strict-assets" type="checkbox"><span >Stop if a resource is missing</span></label>
+    </div></details>
+    <div class="actions"><button id="convert" class="primary" disabled >Convert</button><button id="download-all" disabled >Download ZIP</button></div>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+    <section class="report hidden"><div class="list-heading"><h2 >Report</h2><button class="text-button" id="download-report" disabled >Download report</button></div><div id="report-content" class="report-content"></div></section>
+
+  </main>
+  <noscript><p>Enable JavaScript to convert files locally.</p></noscript>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
