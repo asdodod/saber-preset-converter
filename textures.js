@@ -1,0 +1,13 @@
+import decodeJpeg from './vendor/jpeg-decoder.js?v=20261013-2';
+import {unzlibSync} from './vendor/fflate.js?v=20261013-2';
+export function decodeImage(bytes){
+  if(bytes[0]===255&&bytes[1]===216)return decodeJpeg(bytes,{useTArray:true,maxResolutionInMP:16,maxMemoryUsageInMB:128});
+  if(bytes[0]!==137||bytes[1]!==80)throw Error('Texture baking supports PNG and JPEG.');
+  const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);let width,height,depth,type,interlace,palette,alpha,chunks=[];
+  for(let i=8;i+12<=bytes.length;){let n=view.getUint32(i),tag=String.fromCharCode(...bytes.subarray(i+4,i+8)),data=bytes.subarray(i+8,i+8+n);if(i+n+12>bytes.length)throw Error('Truncated PNG.');if(tag==='IHDR'){width=view.getUint32(i+8);height=view.getUint32(i+12);depth=data[8];type=data[9];interlace=data[12];}if(tag==='PLTE')palette=data;if(tag==='tRNS')alpha=data;if(tag==='IDAT')chunks.push(data);i+=n+12;}
+  if(!width||!height||width*height>16e6||interlace||depth!==8||![0,2,3,4,6].includes(type))throw Error('Unsupported PNG layout for texture baking.');
+  const channels={0:1,2:3,3:1,4:2,6:4}[type],stride=width*channels,compressed=new Uint8Array(chunks.reduce((n,a)=>n+a.length,0));let offset=0;for(let c of chunks){compressed.set(c,offset);offset+=c.length;}const raw=unzlibSync(compressed,{out:new Uint8Array((stride+1)*height)}),pixels=new Uint8Array(width*height*4),prev=new Uint8Array(stride),row=new Uint8Array(stride);
+  function paeth(a,b,c){let p=a+b-c,pa=Math.abs(p-a),pb=Math.abs(p-b),pc=Math.abs(p-c);return pa<=pb&&pa<=pc?a:pb<=pc?b:c;}
+  for(let y=0;y<height;y++){let filter=raw[y*(stride+1)];if(filter>4)throw Error('Invalid PNG filter.');for(let x=0;x<stride;x++){let a=x>=channels?row[x-channels]:0,b=prev[x],c=x>=channels?prev[x-channels]:0,v=raw[y*(stride+1)+x+1];row[x]=(v+(filter===1?a:filter===2?b:filter===3?Math.floor((a+b)/2):filter===4?paeth(a,b,c):0))&255;}for(let x=0;x<width;x++){let i=x*channels,j=(y*width+x)*4;if(type===6)pixels.set(row.subarray(i,i+4),j);if(type===2)pixels.set([row[i],row[i+1],row[i+2],255],j);if(type===0)pixels.set([row[i],row[i],row[i],255],j);if(type===4)pixels.set([row[i],row[i],row[i],row[i+1]],j);if(type===3){let ix=row[i];pixels.set([palette[ix*3],palette[ix*3+1],palette[ix*3+2],alpha?.[ix]??255],j);}}prev.set(row);}return {width,height,data:pixels};
+}
+export function imageSample(image,u,v,wrap=1){if(!image)return [1,1,1,1];const coord=x=>wrap===0?((x%1)+1)%1:Math.max(0,Math.min(1,x));let x=Math.min(image.width-1,Math.floor(coord(u)*image.width)),y=Math.min(image.height-1,Math.floor((1-coord(v))*image.height)),i=(y*image.width+x)*4;return [0,1,2,3].map(k=>image.data[i+k]/255);}
