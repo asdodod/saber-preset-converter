@@ -1,7 +1,7 @@
 export const vec=v=>Object.fromEntries(['x','y','z'].map((k,i)=>[k,Number(Array.isArray(v)?v[i]:v?.[k])||0]));
 export const transform=(p=[0,0,0],r=[0,0,0],scale=[1,1,1])=>({Position:vec(p),Rotation:vec(r),Scale:vec(scale)});
 export const color=(rgb=[1,1,1],glow=1)=>Object.fromEntries(['r','g','b','a'].map((k,i)=>[k,Number(i===3?glow:rgb[i])]));
-// Verified in ReeSabers editor: 0 Constant, 1 Linear, 2 Smooth, 3 Ease.
+// Checked against editor selections and matching exported presets: Ease 0, Linear 1, Constant 2, Smooth 3.
 export const curve=points=>({interpolationType:1,controlPoints:points.map(([time,value])=>({time,value}))});
 export const constant=v=>curve([[0,v]]);
 export const mappings=()=>({colorOverValue:constant(color()),alphaOverValue:constant(1),scaleOverValue:constant(1),valueFrom:0,valueTo:1});
