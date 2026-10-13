@@ -4,7 +4,7 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Convert VainSabers and ReeSabers presets locally in your browser, in both directions.">
   <meta name="theme-color" content="#161618"><title>VainSabers / ReeSabers converter</title>
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css?v=20261013-4">
 </head>
 <body>
   <main class="converter">
@@ -28,10 +28,16 @@
     </div></details>
     <div class="actions"><button id="convert" class="primary" disabled >Convert</button><button id="download-all" disabled >Download ZIP</button></div>
     <div id="status" class="status" role="status" aria-live="polite"></div>
+    <section id="preview-panel" class="preview hidden" aria-label="Preset comparison">
+      <div class="preview-toolbar"><span>Preview</span><select id="preview-motion" aria-label="Preview motion"><option value="static">Static</option><option value="swing">Swing</option></select><select id="preview-focus" aria-label="Preview focus"><option value="all">Whole saber</option><option value="handle">Handle</option></select><button id="preview-pause">Pause</button><button id="preview-reset">Reset view</button><label><input id="preview-glow" type="checkbox" checked>Glow</label><label><input id="preview-blur" type="checkbox" checked>Blur</label><label><input id="preview-trails" type="checkbox" checked>Trails</label><button id="add-reference">Add reference</button><button id="clear-reference" class="hidden">Remove reference</button></div>
+      <input id="reference-input" type="file" accept=".json,.vainsaber,.reesaber" hidden>
+      <div id="preview-labels" class="preview-labels"></div><canvas id="preview-canvas" aria-label="3D comparison. Drag to rotate, scroll to zoom." tabindex="0"></canvas>
+      <div id="preview-notice" class="preview-notice" role="status"></div>
+    </section>
     <section class="report hidden"><div class="list-heading"><h2 >Report</h2><button class="text-button" id="download-report" disabled >Download report</button></div><div id="report-content" class="report-content"></div></section>
 
   </main>
   <noscript><p>Enable JavaScript to convert files locally.</p></noscript>
-  <script type="module" src="./app.js?v=20261013-3"></script>
+  <script type="module" src="./app.js?v=20261013-4"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
-import {unzipSync,zipSync,strToU8,strFromU8,zlibSync} from './vendor/fflate.js?v=20261013-3';
-import * as s from './schema.js?v=20261013-3';
-import {identity,matrix,multiply,point,decompose,vector} from './math.js?v=20261013-3';
-import {decodeImage,imageSample} from './textures.js?v=20261013-3';
+import {unzipSync,zipSync,strToU8,strFromU8,zlibSync} from './vendor/fflate.js?v=20261013-4';
+import * as s from './schema.js?v=20261013-4';
+import {identity,matrix,multiply,point,decompose,vector} from './math.js?v=20261013-4';
+import {decodeImage,imageSample} from './textures.js?v=20261013-4';
 export {zipSync,strToU8};
 export const MAX_BYTES=128*1024*1024;
 export const clamp=(v,lo=0,hi=1)=>Math.max(lo,Math.min(hi,Number(v)));
@@ -38,7 +38,7 @@ function hsvToRgb(h,sat,v){h=((h%1+1)%1)*6;let f=h%1,p=v*(1-sat),q=v*(1-f*sat),t
 function blended(rgb,weight,glow,hue=0){weight=clamp(weight);const mixed=rgb.map((c,i)=>(1-weight)*c+weight*(i===0?.8:0));if(!hue)return s.color(mixed,Math.max(0,glow));let [h,sat,v]=rgbToHsv(mixed);return s.color(hsvToRgb(h+hue,sat,v),Math.max(0,glow));}
 
 class Context{
-  constructor(name,inputAssets,resources,options){this.name=name;this.assets=new Map(inputAssets);this.resources=resources||new Map();this.warnings=[];this.stats={parts:0,trails:0,assets:0,skipped:0};this.options={fps:90,blurMs:25,strict:false,...options};const {fps,blurMs}=this.options;if(!Number.isFinite(fps)||fps<30||fps>240||!Number.isFinite(blurMs)||blurMs<0||blurMs>25)throw Error('VR refresh rate must be 30Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р В РІР‚С™Р РЋРЎв„ў240 Hz; blur must be 0Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р В РІР‚С™Р РЋРЎв„ў25 ms.');}
+  constructor(name,inputAssets,resources,options){this.name=name;this.assets=new Map(inputAssets);this.resources=resources||new Map();this.warnings=[];this.stats={parts:0,trails:0,assets:0,skipped:0};this.options={fps:90,blurMs:25,strict:false,...options};const {fps,blurMs}=this.options;if(!Number.isFinite(fps)||fps<30||fps>240||!Number.isFinite(blurMs)||blurMs<0||blurMs>25)throw Error('VR refresh rate must be 30-240 Hz; blur must be 0-25 ms.');}
   warn(code,message,item=''){if(!this.warnings.some(w=>w.code===code&&w.message===message&&w.item===item))this.warnings.push({code,message,item});}
   add(name,bytes,folder='textures'){name=safeName(basename(name));let final=name,i=2;while(this.assets.has(folder+'/'+final)&&!equalBytes(this.assets.get(folder+'/'+final),bytes)){let dot=name.lastIndexOf('.');final=dot>0?name.slice(0,dot)+'_'+i+name.slice(dot):name+'_'+i;i++;}this.assets.set(folder+'/'+final,bytes);return final;}
   asset(name,encoded,folder='textures',item=''){if(encoded)return this.add(name||'embedded_'+this.assets.size+(folder==='geometry'?'.obj':'.png'),fromBase64(encoded),folder);if(!name||name.toLowerCase()==='none')return '';let leaf=basename(name),key=folder+'/'+leaf;if(this.assets.has(key))return leaf;let found=this.resources.get(name)||this.resources.get(leaf);if(found)return this.add(leaf,found,folder);if(folder==='textures'&&leaf.toLowerCase()==='whitepixel.png')return this.add(leaf,png(1,1,new Uint8Array([255,255,255,255])));let message='Missing asset: '+name+'. Add its texture/model file.';if(this.options.strict)throw Error(message);this.warn('missing_asset',message,item);return '';}
@@ -99,10 +99,19 @@ function toReePart(ctx,p,index){
   let name=p.name||'Part '+(index+1),config=s.common(name,p.position,p.rotation),rings=ringsOf(p),lo=Math.min(...rings.map(r=>r.position)),hi=Math.max(...rings.map(r=>r.position)),positions=rings.map(r=>hi>lo?(r.position-lo)/(hi-lo):0);
   for(let i=positions.length-2;i>=0;i--)if(positions[i]>=positions[i+1])positions[i]=Math.max(0,positions[i+1]-1e-6);for(let i=1;i<positions.length;i++)if(positions[i]<=positions[i-1])positions[i]=Math.min(1,positions[i-1]+1e-6);
   const ga=keys(p.glowaddendgradient||[],0),om=keys(p.opacitymultipliergradient||[],1),colors=[],opacity=[],radius=[];
-  rings.forEach((r,i)=>{let t=positions[i];colors.push([t,blended(r.color||[0,0,0],r.customweight??1,p.disableglowpass?0:(r.glow??1)+sample(ga,r.position,0),p.hueshift||0)]);opacity.push([t,clamp((r.opacity??1)*sample(om,r.position,1))]);radius.push([t,Math.abs(r.radius)]);});
+  rings.forEach((r,i)=>{let t=positions[i];colors.push([t,blended(r.color||[0,0,0],r.customweight??1,p.disableglowpass?0:(r.glow??1),p.hueshift||0)]);opacity.push([t,clamp(r.opacity??1)]);radius.push([t,Math.abs(r.radius)]);});
   shadingWarnings(ctx,p,name);if(rings.some(r=>(r.customweight??1)!==1))ctx.warn('color_blend','Fixed/game color mixing is approximated using a red hue reference.',name);
   let mat=s.material(),tex=s.textures();Object.assign(mat,{renderQueue:3001+(p.renderqueueoffset||0),cullMode:p.inverted?1:0,metallic:clamp(p.metallic||0),roughness:1-clamp(p.smoothness||0),fresnelPower:Math.max(.01,p.fresnelpower??5),sceneLights:!!p.lit,sceneReflections:!!p.lit,envLightIntensity:p.lit?1:0,reflectionIntensity:p.lit?(p.cubemapstrength??.78):0});
   tex.mainTextureId=ctx.asset(p.colortexture,p.colortexturebase64,'textures',name);tex.glowMapTextureId=ctx.asset(p.glowtexture,p.glowtexturebase64,'textures',name);
+  // Fresnel curves act across the visible surface, not along the length.
+  if((p.rimpowergradient||[]).some(k=>lower(k).value)||p.rimfactor||(p.glowaddendgradient||[]).some(k=>lower(k).value)||(p.opacitymultipliergradient||[]).some(k=>lower(k).value!==1)){
+    const glowRef=Math.max(1e-6,...colors.map(([,c])=>c.a)),allZero=colors.every(([,c])=>c.a===0),times=Array.from({length:129},(_,i)=>i/128),f=t=>1-Math.abs(Math.cos(t*Math.PI));
+    if(allZero)for(const [,c] of colors)c.a=1;
+    mat.maskSettings.surfaceAngleMappings.colorOverValue=s.curve(times.map(t=>{const rim=1+vainGradient(p.rimpowergradient,f(t),(p.rimfactor||0)*f(t)**(p.rimpower??3)),add=vainGradient(p.glowaddendgradient,f(t),0);return [t,s.color([rim,rim,rim],allZero?Math.max(0,add):Math.max(0,1+add/glowRef))];}));
+    mat.maskSettings.surfaceAngleMappings.alphaOverValue=s.curve(times.map(t=>[t,clamp(vainGradient(p.opacitymultipliergradient,f(t),1))]));
+    ctx.warn('surface_angle_transfer','Vain Fresnel material curves mapped using a normalized-angle approximation; perpendicular view dependence and additive glow can differ.',name);
+  }
+  mat.depthWrite=!p.disabledepthprepass;
   let mode=p.geometrymode??0,useObj=!p._nativeRings&&([2,3,'Sprite','Obj'].includes(mode)||rings.some((r,i)=>r.offsetx||r.offsety||r.uvoffset||(i&&r.position<rings[i-1].position))),model;
   if(useObj){if([3,'Obj'].includes(mode)){model=ctx.asset(p.objfile,p.objbase64,'geometry',name);if(!model){ctx.warn('missing_model','Missing OBJ replaced with a cylinder placeholder.',name);useObj=false;}}else if([2,'Sprite'].includes(mode)){let x=(p.spritesizex??.2)/2,y=(p.spritesizey??.2)/2;model=ctx.add(`part_${index}.obj`,strToU8(`v ${-x} ${-y} 0\nv ${x} ${-y} 0\nv ${x} ${y} 0\nv ${-x} ${y} 0\nvt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nf 1/1 2/2 3/3\nf 1/1 3/3 4/4\n`),'geometry');}else model=ctx.add(`part_${index}.obj`,ringObj(rings,p.length??.1,p.ringvertsmanual??20),'geometry');}
   let result;
@@ -114,7 +123,7 @@ function toReePart(ctx,p,index){
     config.MeshSettings={zOffsetFrom:lo*length,zOffsetTo:hi*length,radius:max,stretchBias:4,saberProfile:s.curve(radius.map(([t,r])=>[t,r/max])),startCap:false,endCap:false,verticalResolution:clamp(rings.length*2,20,256),horizontalResolution:clamp(p.manualringverts?(p.ringvertsmanual??20):20,3,128)};result=s.module('blur-saber',2,config);
   }
   Object.assign(config,{MaterialSettings:mat,TexturesSettings:tex});let rotation=[0,0,0];for(let raw of p.animators||[]){let a=lower(raw),type=String(a.$type||'').split(',')[0];if(type==='RotationAdder'){let axis={X:0,Y:1,Z:2}[a.axis]??a.axis??0;if(![0,1,2].includes(axis))throw Error('Invalid rotation axis.');rotation[axis]+=a.speed??30;}else ctx.warn('animator',type+' is kept in its initial static state.',name);}
-  if(rotation.some(Boolean)){let wrapper=s.empty(name+' Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р РЋРІР‚С” Rotation');wrapper.Config.LocalTransform=copy(config.LocalTransform);wrapper.Config.RotationSpeed=s.vec(rotation);config.LocalTransform=s.transform();wrapper.Children=[result];result=wrapper;ctx.warn('rotation_order','Rotation is mapped through an Empty; Euler rotation order can differ.',name);}ctx.stats.parts++;return result;
+  if(rotation.some(Boolean)){let wrapper=s.empty(name+' / Rotation');wrapper.Config.LocalTransform=copy(config.LocalTransform);wrapper.Config.RotationSpeed=s.vec(rotation);config.LocalTransform=s.transform();wrapper.Children=[result];result=wrapper;ctx.warn('rotation_order','Rotation is mapped through an Empty; Euler rotation order can differ.',name);}ctx.stats.parts++;return result;
 }
 function vainGradient(list,t,def,valueKey='value'){let pts=(list||[]).map(lower).sort((a,b)=>a.time-b.time);if(!pts.length)return def;if(t<=pts[0].time)return pts[0][valueKey];for(let i=1;i<pts.length;i++){let a=pts[i-1],b=pts[i];if(t<=b.time){let u=b.time>a.time?(t-a.time)/(b.time-a.time):1,e=a.easing??0;if(e===1)u*=u;else if(e===2)u*=2-u;else if(e===3)u=u<.5?2*u*u:-1+(4-2*u)*u;return lerp(a[valueKey],b[valueKey],u);}}return pts.at(-1)[valueKey];}
 function toReeTrail(ctx,p,blade,index){let name=(blade?'Blade':'Tip')+' Trail '+(index+1),pos=p.position||[0,0,1],config=s.common(name,[pos[0],pos[1],0]),masks=s.mask('trail'),cols=(p.colorgradient||[]).map(lower).map(k=>[k.time,k.color]).sort((a,b)=>a[0]-b[0]),blend=keys(p.customblendgradient||[],p.customblend??1),times=[...new Set([0,1,...Array.from({length:33},(_,i)=>i/32),...cols.map(k=>clamp(k[0])),...blend.map(k=>clamp(k[0]))])].sort((a,b)=>a-b);
@@ -140,6 +149,14 @@ function pureGameColor(col){return (col.r??0)>0&&Math.abs(col.g??0)<1e-6&&Math.a
 // Vain uses lerp(neutral RGB, live note RGB, weight), never a baked red RGB.
 export function inverseColor(ctx,col,name){col=col||s.color([1,0,0]);const rgb=[col.r??1,col.g??1,col.b??1],lo=Math.min(...rgb),hi=Math.max(...rgb),chroma=Math.max(0,hi-lo),weight=clamp(chroma);let neutral=weight<1-1e-8?lo/(1-weight):0;let glow=col.a??1;if(chroma>1){glow*=chroma;ctx?.warn('hdr_color','HDR color gain is approximated through glow; note color remains dynamic.',name);}return {Color:[neutral,neutral,neutral],CustomWeight:weight,Glow:glow};}
 function mixNoteMaterial(a,b,t){const weight=lerp(a.CustomWeight,b.CustomWeight,t),base=a.Color.map((v,i)=>lerp(v*(1-a.CustomWeight),b.Color[i]*(1-b.CustomWeight),t));return {Color:base.map(v=>weight<1-1e-8?v/(1-weight):0),CustomWeight:weight,Glow:lerp(a.Glow,b.Glow,t)};}
+function angleTransferToVain(ctx,p,mat,name){
+  p.DisableDepthPrepass=mat.depthWrite===false;const map=mat.maskSettings?.surfaceAngleMappings;if(!map)return;
+  const times=Array.from({length:129},(_,i)=>i/128),glowRef=Math.max(0,...(p.Rings||[]).map(r=>r.Glow));
+  const sample=f=>{const a=Math.acos(clamp(1-f))/Math.PI,t=mat.cullMode===1?1-a:a;return {c:evaluateCurve(map.colorOverValue,t,s.color()),alpha:evaluateCurve(map.alphaOverValue,t,1)};};
+  const samples=times.map(f=>sample(f));if(samples.every(v=>Math.abs(v.c.r-1)<1e-8&&Math.abs(v.c.g-1)<1e-8&&Math.abs(v.c.b-1)<1e-8&&Math.abs(v.c.a-1)<1e-8&&Math.abs(v.alpha-1)<1e-8))return;
+  p.RimPerpendicular=0;p.RimPowerGradient=times.map((Time,i)=>({Time,Value:(samples[i].c.r+samples[i].c.g+samples[i].c.b)/3-1,Easing:0}));p.OpacityMultiplierGradient=times.map((Time,i)=>({Time,Value:clamp(samples[i].alpha),Easing:0}));p.GlowAddendGradient=times.map((Time,i)=>({Time,Value:glowRef*(samples[i].c.a-1),Easing:0}));
+  ctx.warn('surface_angle_transfer','Surface RGB/opacity/glow mapped to Vain Fresnel gradients using a normalized-angle approximation. RGB hue, additive glow, and the closed-source angle coordinate can differ.',name);
+}
 export function evaluateCurve(curve,t,def=1){const pts=curveKeys(curve,def);if(t<pts[0][0])return pts[0][1];let i=0;while(i+1<pts.length&&t>=pts[i+1][0])i++;if(i===pts.length-1)return pts[i][1];const [a,av]=pts[i],[b,bv]=pts[i+1],u=b>a?clamp((t-a)/(b-a)):1,type=curve?.interpolationType??1;if(type===2)return av;if(type===0)return lerp(av,bv,u*u*(3-2*u));if(type===3){const prev=pts[Math.max(0,i-1)],next=pts[Math.min(pts.length-1,i+2)],hermite=(v0,v1,vp,vn)=>{const m0=b>prev[0]?(v1-vp)/(b-prev[0])*(b-a):0,m1=next[0]>a?(vn-v0)/(next[0]-a)*(b-a):0;return (2*u**3-3*u**2+1)*v0+(u**3-2*u**2+u)*m0+(-2*u**3+3*u**2)*v1+(u**3-u**2)*m1;};if(av&&typeof av==='object')return Object.fromEntries(Object.keys(av).map(k=>[k,hermite(av[k],bv[k],prev[1][k],next[1][k])]));return hermite(av,bv,prev[1],next[1]);}return lerp(av,bv,u);}
 function reverseBlade(ctx,module,world,speed){
   const c=module.Config||{},name=c.Name||'Blur Saber',v1=module.Version===1,mesh=v1?c.SaberSettings||{}:c.MeshSettings||{},mat=v1?mesh:c.MaterialSettings||{},tex=c.TexturesSettings||{},mask=mat.maskSettings||{},mapped=mask.bladeMappings||s.mappings();
@@ -150,11 +167,12 @@ function reverseBlade(ctx,module,world,speed){
   const allCurves=[mesh.saberProfile,mapped.colorOverValue,mapped.alphaOverValue,mapped.scaleOverValue,mask.handleMask];const times=[...new Set([0,1,...Array.from({length:129},(_,i)=>i/128),...allCurves.flatMap(cv=>(cv?.controlPoints||[]).flatMap(k=>[clamp(k.time-1e-6),clamp(k.time),clamp(k.time+1e-6)]))])].sort((a,b)=>a-b);
   p.GeometryMode=1;p.Length=Math.abs(to-from)*decomp.scale[2];p.Position=point(world,[0,0,from]);p.Rotation=decomp.rotation;
   const glowMultiplier=mat.glowMultiplier??1;p.Rings=times.map(t=>{const col=evaluateCurve(mapped.colorOverValue,t,s.color([1,0,0])),blade=inverseColor(ctx,col,name),handle=inverseColor(ctx,mat.handleColor||s.color([.1,.1,.1],0),name),h=clamp(evaluateCurve(mask.handleMask,t,0)),inv=v1?mixNoteMaterial(blade,handle,h):blade;return {Position:t,Radius:Math.abs(rad*Number(evaluateCurve(mesh.saberProfile,t,1))*Number(evaluateCurve(mapped.scaleOverValue,t,1))*decomp.scale[0]),...inv,Glow:inv.Glow*glowMultiplier,Opacity:clamp(evaluateCurve(mapped.alphaOverValue,t,1)),Inverted:mat.cullMode===1,OffsetX:0,OffsetY:0,UvOffset:0};});
-  if(to<from){p.Rotation=decompose(multiply(world,matrix({Rotation:{x:0,y:180,z:0}}))).rotation;ctx.warn('reverse_axis','A reversed Z range is represented by a 180Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В° turn.',name);}
+  if(to<from){p.Rotation=decompose(multiply(world,matrix({Rotation:{x:0,y:180,z:0}}))).rotation;ctx.warn('reverse_axis','A reversed Z range is represented by a 180 degree turn.',name);}
   p.Inverted=mat.cullMode===1;p.Blur=ctx.options.blurMs?Number(mat.blurFrames??2)*1000/(ctx.options.fps*ctx.options.blurMs):0;p.BlurFade=Number(mat.blurSensitivity??1);p.RenderQueueOffset=Number(mat.renderQueue??3001)-3001;p.Lit=!!(mat.sceneLights||mat.sceneReflections);p.Metallic=clamp(mat.metallic||0);p.Smoothness=1-clamp(mat.roughness??1);p.FresnelPower=mat.fresnelPower??5;p.Animators=rotationAnimators(speed);if(!p.Animators.length)p.Animators=null;
   applyTextures(ctx,p,tex,name);
   if(Math.abs(decomp.scale[0]-decomp.scale[1])>1e-6||decomp.distorted){let rings=times.map(t=>({position:t,radius:rad*Number(sample(profile,t))*Number(sample(scales,t)),inverted:mat.cullMode===1})),local=matrix({Position:{z:from},Scale:{x:1,y:1,z:1}}),bytes=ringObj(rings,to-from,mesh.horizontalResolution??20);bytes=transformObj(bytes,multiply(world,local));p.GeometryMode=3;p.ObjFile=safeName(name)+'.obj';p.ObjBase64=toBase64(bytes);p.ObjScale=1;p.Position=[0,0,0];p.Rotation=[0,0,0];p.Rings=null;ctx.warn('baked_scale','Non-uniform/reflected transform is baked into an OBJ; per-ring gradients are reduced to the first sample.',name);let inv=inverseColor(ctx,sample(colors,0),name);Object.assign(p,{StartColor:inv.Color,EndColor:inv.Color,StartCustomWeight:inv.CustomWeight,EndCustomWeight:inv.CustomWeight,StartGlow:inv.Glow,EndGlow:inv.Glow,StartOpacity:clamp(sample(opacities,0)),EndOpacity:clamp(sample(opacities,0))});}
   const first=p.Rings?.[0],last=p.Rings?.at(-1);if(first){for(const [side,r] of [['Start',first],['End',last]]){p[side+'Radius']=r.Radius;p[side+'Color']=r.Color;p[side+'CustomWeight']=r.CustomWeight;p[side+'Glow']=r.Glow;p[side+'Opacity']=r.Opacity;}if(mesh.startCap&&first.Radius>1e-8)p.Rings.unshift({...first,Radius:0});if(mesh.endCap&&last.Radius>1e-8)p.Rings.push({...last,Radius:0});}
+  angleTransferToVain(ctx,p,mat,name);
   if(mesh.startCap||mesh.endCap)ctx.warn('end_caps','End caps are closed with zero-radius rings; normals may differ.',name);if(!v1&&(mask.handleMask?.controlPoints||[]).some(k=>k.value!==0))ctx.warn('handle_mask','PBR handle mask is approximated separately from the sampled color.',name);
   ctx.stats.parts++;return p;
 }
@@ -176,7 +194,7 @@ function fitTipTrail(ctx,trail,mask,name){
   trail.Glow=Math.max(0,evaluateCurve(length.colorOverValue,end*.2,s.color()).a)*(widthAlpha?widthGlow/widthAlpha:0);
   const colors=times.filter(t=>t<=end).map(t=>[end?t/end:0,inverseColor(ctx,evaluateCurve(length.colorOverValue,t,s.color([1,0,0])),name)]);trail.ColorGradient=colors.map(([Time,c])=>({Time,Color:c.Color,Easing:0}));trail.CustomBlendGradient=colors.map(([Time,c])=>({Time,Value:c.CustomWeight,Easing:0}));
   trail.ColorTexture=null;trail.ColorTextureBase64=null;
-  ctx.warn('tip_profile_fit','Tip width/opacity masks fitted to VainРІР‚в„ўs fixed LineRenderer profile; arbitrary taper, glow and cross-width detail remain approximate.',name);
+  ctx.warn('tip_profile_fit','Tip width/opacity masks fitted to Vain fixed LineRenderer profile; arbitrary taper, glow and cross-width detail remain approximate.',name);
 }
 function bakeBladeTrail(ctx,trail,mask,general,name){
   const lm=mask.lengthMappings||{},wm=mask.widthMappings||{};let main=null,opacity=null;
@@ -190,7 +208,7 @@ function bakeBladeTrail(ctx,trail,mask,general,name){
     }
   }
   trail.ColorTexture=ctx.add(safeName(name)+'_mask.png',png(width,height,pixels));trail.ColorTextureBase64=ctx.embed(trail.ColorTexture,'textures',name);trail.GlowTexture=ctx.add(safeName(name)+'_glow.png',png(width,height,glowPixels));trail.GlowTextureBase64=ctx.embed(trail.GlowTexture,'textures',name);
-  ctx.warn('trail_mask_bake','Trail length/width opacity, taper and glow baked into textures. The moving mesh and VainРІР‚в„ўs transparent ribbon base remain approximate.',name);
+  ctx.warn('trail_mask_bake','Trail length/width opacity, taper and glow baked into textures. The moving mesh and Vain transparent ribbon base remain approximate.',name);
 }
 function reverseTrail(ctx,module,world){
   const c=module.Config||{},name=c.Name||'Simple Trail',mesh=c.MeshSettings||{},mat=c.MaterialSettings||{},general=mat.generalSettings||{},mask=mat.maskSettings||{},mapped=mask.lengthMappings||s.mappings();if(mat.materialType)ctx.warn('trail_material','Distortion / special trail materials become a standard VainSabers trail.',name);if(c.Space||c.SpaceReference)ctx.warn('trail_space','Trail space references are flattened into saber-local coordinates.',name);

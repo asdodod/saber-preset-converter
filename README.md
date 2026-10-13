@@ -51,3 +51,15 @@ VainSabers serialization/geometry semantics were checked against the public [Vai
 Application code: MIT, see `LICENSE`. ZIP/PNG compression: [fflate 0.8.3](https://github.com/101arrowz/fflate), MIT; its license is included in `vendor/fflate-LICENSE.txt`.
 
 JPEG decoding: jpeg-js 0.4.4 decoder, adapted to ES modules; Apache 2.0 license is included in `vendor/jpeg-js-LICENSE.txt`.
+
+## Browser comparison preview
+
+After adding a preset, the source appears in a WebGL preview. Conversion adds a second view; Add reference accepts another local JSON/.reesaber/.vainsaber file for a third view. All views share one camera and the same motion. Drag to rotate, scroll to zoom, or select Handle to inspect the handle. Static/Swing, pause, glow, blur and trails can be controlled together. Clearing files hides the preview.
+
+The source and target have independent loaders; the source is not converted first to make the two views look alike. Vain rings, inversion/winding, embedded PNG/JPEG/OBJ assets, Fresnel RGB/glow/opacity gradients, depth prepass and clip depth offsets are rendered. Ree Blur Saber v1/v2, OBJ models, nested/disabled modules, material masks and textures are loaded directly. Vertex Noise blade effects are excluded. GLB/VFX and other unsupported modules are reported.
+
+This preview is an approximation, not either native mod's renderer. Ree surface-angle input uses an assumed normalized-angle coordinate, not a verified closed-source shader. PBR lighting, animated textures, drivers, motion blur and trail shaping differ. It is useful for geometry/material comparison, but a matching preview does not guarantee matching gameplay.
+
+Conversion now retains depth-write distinctions and transfers angular material masks. Vain angle gradients are no longer incorrectly sampled along the blade's length. Angle coordinate mapping and additive-versus-multiplicative glow differences are reported as approximations.
+
+3D rendering uses a locally vendored Three.js 0.186.1 and OrbitControls (MIT); see vendor/three-LICENSE.txt. No external runtime CDN is used.
