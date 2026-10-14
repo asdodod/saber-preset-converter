@@ -37,7 +37,9 @@ test('mirrored texture wrapping repeats reflected UVs',()=>{const image={width:2
 test('HDR note brightness remains RGB gain rather than becoming extra glow',()=>{
   const m=s.module('blur-saber',2,{...s.common('HDR'),MeshSettings:{zOffsetFrom:0,zOffsetTo:1,radius:.01,saberProfile:s.constant(1)},MaterialSettings:s.material()});m.Config.MaterialSettings.maskSettings.bladeMappings.colorOverValue=s.constant(s.color([1.5,0,0],2));
   const p=convert(parsed({Modules:[m]}),'Any HDR preset','vain').data.Parts[0],r=p.Rings[0],gain=1+p.RimPowerGradient[0].Value;
-  assert.equal(r.Glow,2);assert.ok(Math.abs(gain*(r.Color[0]*(1-r.CustomWeight)+.8*r.CustomWeight)-1.5)<1e-8);
+  assert.equal(r.Glow*.8,2);assert.ok(Math.abs(gain*(r.Color[0]*(1-r.CustomWeight)+.8*r.CustomWeight)-1.5)<1e-8);
+  m.Config.MaterialSettings.maskSettings.bladeMappings.colorOverValue=s.constant(s.color([1,0,0],2));
+  const normal=convert(parsed({Modules:[m]}),'Normal RGB','vain').data.Parts[0];assert.equal(normal.Rings[0].Glow,r.Glow);
 });
 test('native parent rotation moves children around their parent pivot',()=>{
   const root=s.empty('Orbit');root.Config.RotationSpeed=s.vec([0,0,360]);const child=s.module('blur-saber',2,{...s.common('Sphere',[.02,0,0]),MeshSettings:{radius:.01,saberProfile:s.constant(1)},MaterialSettings:s.material()});root.Children=[child];

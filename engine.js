@@ -1,8 +1,9 @@
-import {unzipSync,zipSync,strToU8,strFromU8,zlibSync} from './vendor/fflate.js?v=20261013-7';
-import * as s from './schema.js?v=20261013-7';
-import {identity,matrix,multiply,point,decompose,vector} from './math.js?v=20261013-7';
-import {decodeImage,imageSample} from './textures.js?v=20261013-7';
-import {vainRings,vainRingVertices,spriteObj} from './vain-geometry.js?v=20261013-7';
+import {legacyHighlight,legacyHandleGlow} from './legacy-material.js?v=20261014-3';
+import {unzipSync,zipSync,strToU8,strFromU8,zlibSync} from './vendor/fflate.js?v=20261014-3';
+import * as s from './schema.js?v=20261014-3';
+import {identity,matrix,multiply,point,decompose,vector} from './math.js?v=20261014-3';
+import {decodeImage,imageSample} from './textures.js?v=20261014-3';
+import {vainRings,vainRingVertices,spriteObj} from './vain-geometry.js?v=20261014-3';
 export {zipSync,strToU8};
 export const MAX_BYTES=128*1024*1024;
 export const clamp=(v,lo=0,hi=1)=>Math.max(lo,Math.min(hi,Number(v)));
@@ -159,11 +160,11 @@ function noteMaterialGain(curves,extra=[]){const colors=[...extra,...curves.flat
 function mixNoteMaterial(a,b,t){const weight=lerp(a.CustomWeight,b.CustomWeight,t),base=a.Color.map((v,i)=>lerp(v*(1-a.CustomWeight),b.Color[i]*(1-b.CustomWeight),t));return {Color:base.map(v=>weight<1-1e-8?v/(1-weight):0),CustomWeight:weight,Glow:lerp(a.Glow,b.Glow,t)};}
 function angleTransferToVain(ctx,p,mat,name,gain=1){
   p.DisableDepthPrepass=mat.depthWrite===false;const map=mat.maskSettings?.surfaceAngleMappings;if(gain!==1)p.RimPowerGradient=[{Time:0,Value:gain-1,Easing:0},{Time:1,Value:gain-1,Easing:0}];if(!map)return;
-  const times=Array.from({length:129},(_,i)=>i/128),glowRef=Math.max(p.StartGlow||0,...(p.Rings||[]).map(r=>r.Glow));
-  const sample=f=>{const a=Math.acos(clamp(1-f))/Math.PI,t=mat.cullMode===1?1-a:a;return {c:evaluateCurve(map.colorOverValue,t,s.color()),alpha:evaluateCurve(map.alphaOverValue,t,1)};};
+  const times=Array.from({length:129},(_,i)=>i/128),glowRef=(p.Lit?.5:.8)*Math.max(p.StartGlow||0,...(p.Rings||[]).map(r=>r.Glow));
+  const sample=f=>{const a=mat.cullMode===1?1:f,from=map.valueFrom??0,to=map.valueTo??1,t=to!==from?clamp((a-from)/(to-from)):0;return {c:evaluateCurve(map.colorOverValue,t,s.color()),alpha:evaluateCurve(map.alphaOverValue,t,1)};};
   const samples=times.map(f=>sample(f));if(samples.every(v=>Math.abs(v.c.r-1)<1e-8&&Math.abs(v.c.g-1)<1e-8&&Math.abs(v.c.b-1)<1e-8&&Math.abs(v.c.a-1)<1e-8&&Math.abs(v.alpha-1)<1e-8))return;
   p.RimPerpendicular=0;p.RimPowerGradient=times.map((Time,i)=>({Time,Value:gain*(samples[i].c.r+samples[i].c.g+samples[i].c.b)/3-1,Easing:0}));p.OpacityMultiplierGradient=times.map((Time,i)=>({Time,Value:clamp(samples[i].alpha),Easing:0}));p.GlowAddendGradient=times.map((Time,i)=>({Time,Value:glowRef*(samples[i].c.a-1),Easing:0}));
-  ctx.warn('surface_angle_transfer','Surface RGB/opacity/glow mapped to Vain Fresnel gradients using a normalized-angle approximation. RGB hue, additive glow, and the closed-source angle coordinate can differ.',name);
+  ctx.warn('surface_angle_transfer','Surface masks fitted to a cosine Fresnel coordinate. RGB hue and multiplicative versus additive glow remain approximate.',name);
 }
 export function evaluateCurve(curve,t,def=1){const pts=curveKeys(curve,def);if(!pts.length)return def;if(t<pts[0][0])return pts[0][1];let i=0;while(i+1<pts.length&&t>=pts[i+1][0])i++;if(i===pts.length-1)return pts[i][1];const [a,av]=pts[i],[b,bv]=pts[i+1],u=b>a?clamp((t-a)/(b-a)):1,type=curve?.interpolationType??1;if(type===2)return av;if(type===0)return lerp(av,bv,u*u*(3-2*u));if(type===3){const prev=pts[Math.max(0,i-1)],next=pts[Math.min(pts.length-1,i+2)],hermite=(v0,v1,vp,vn)=>{const m0=b>prev[0]?(v1-vp)/(b-prev[0])*(b-a):0,m1=next[0]>a?(vn-v0)/(next[0]-a)*(b-a):0;return (2*u**3-3*u**2+1)*v0+(u**3-2*u**2+u)*m0+(-2*u**3+3*u**2)*v1+(u**3-u**2)*m1;};if(av&&typeof av==='object')return Object.fromEntries(Object.keys(av).map(k=>[k,hermite(av[k],bv[k],prev[1][k],next[1][k])]));return hermite(av,bv,prev[1],next[1]);}return lerp(av,bv,u);}
 function reverseBlade(ctx,module,world,speed){
@@ -174,11 +175,25 @@ function reverseBlade(ctx,module,world,speed){
   for(let cv of [mesh.saberProfile,mapped.colorOverValue,mapped.alphaOverValue,mapped.scaleOverValue])curveWarnings(ctx,cv,name);maskWarnings(ctx,mask,name);
   const allCurves=[mesh.saberProfile,mapped.colorOverValue,mapped.alphaOverValue,mapped.scaleOverValue,mask.handleMask];const times=[...new Set([0,1,...Array.from({length:129},(_,i)=>i/128),...allCurves.flatMap(cv=>(cv?.controlPoints||[]).flatMap(k=>[clamp(k.time-1e-6),clamp(k.time),clamp(k.time+1e-6)]))])].sort((a,b)=>a-b);
   p.GeometryMode=1;p.Length=Math.abs(to-from)*decomp.scale[2];p.Position=point(world,[0,0,from]);p.Rotation=decomp.rotation;
-  const gain=noteMaterialGain([mapped.colorOverValue],v1?[mat.handleColor||s.color([.1,.1,.1],0)]:[]),glowMultiplier=mat.glowMultiplier??1;p.Rings=times.map(t=>{const col=evaluateCurve(mapped.colorOverValue,t,s.color([1,0,0])),blade=inverseColor(ctx,col,name,gain),handle=inverseColor(ctx,mat.handleColor||s.color([.1,.1,.1],0),name,gain),h=clamp(evaluateCurve(mask.handleMask,t,0)),inv=v1?mixNoteMaterial(blade,handle,h):blade;return {Position:t,Radius:Math.abs(rad*Number(evaluateCurve(mesh.saberProfile,t,1))*Number(evaluateCurve(mapped.scaleOverValue,t,1))*decomp.scale[0]),...inv,Glow:inv.Glow*glowMultiplier,Opacity:clamp(evaluateCurve(mapped.alphaOverValue,t,1))**(2/3),Inverted:mat.cullMode===1,OffsetX:0,OffsetY:0,UvOffset:0};});
+  const gain=noteMaterialGain([mapped.colorOverValue],v1?[mat.handleColor||s.color([.1,.1,.1],0)]:[]),glowMultiplier=mat.glowMultiplier??1;p.Rings=times.map(t=>{const col=evaluateCurve(mapped.colorOverValue,t,s.color([1,0,0])),blade=inverseColor(ctx,col,name,gain),handle=inverseColor(ctx,mat.handleColor||s.color([.1,.1,.1],0),name,gain),h=clamp(evaluateCurve(mask.handleMask,t,0)),inv=v1?mixNoteMaterial(blade,handle,h):blade;return {Position:t,Radius:Math.abs(rad*Number(evaluateCurve(mesh.saberProfile,t,1))*Number(evaluateCurve(mapped.scaleOverValue,t,1))*decomp.scale[0]),...inv,Glow:(v1&&mat.handleRoughness!==undefined?legacyHandleGlow(blade.Glow,h):inv.Glow)*glowMultiplier,Opacity:clamp(evaluateCurve(mapped.alphaOverValue,t,1))**(2/3),Inverted:mat.cullMode===1,OffsetX:0,OffsetY:0,UvOffset:0};});
   if(to<from){p.Rotation=decompose(multiply(world,matrix({Rotation:{x:0,y:180,z:0}}))).rotation;ctx.warn('reverse_axis','A reversed Z range is represented by a 180 degree turn.',name);}
   p.Inverted=mat.cullMode===1;p.Blur=ctx.options.blurMs?Number(mat.blurFrames??2)*1000/(ctx.options.fps*ctx.options.blurMs):0;p.BlurFade=Number(mat.blurSensitivity??1);p.RenderQueueOffset=Number(mat.renderQueue??3001)-3001;p.Lit=!!(mat.sceneLights||mat.sceneReflections);p.Metallic=clamp(mat.metallic||0);p.Smoothness=1-clamp(mat.roughness??1);p.FresnelPower=mat.fresnelPower??5;p.Animators=rotationAnimators(speed);if(!p.Animators.length)p.Animators=null;
+  if(v1&&mat.handleRoughness!==undefined){
+    const handles=times.map(t=>clamp(evaluateCurve(mask.handleMask,t,0))),weight=Math.max(...handles);
+    if(weight>1e-6){
+      const highlight=legacyHighlight(mat.handleRoughness);
+      p.Lit=true;p.SpecularStrength=highlight.strength*weight/gain;p.SpecularPower=highlight.power;
+      p.Smoothness=0;p.Metallic=0;p.CubemapStrength=.35*weight/gain;
+      p.FresnelStrength=.12*weight/gain;p.FresnelPower=3;p.RimColor=[1,1,1];
+      ctx.warn('legacy_handle_lighting','Legacy handle roughness fitted to Vain Lit highlights. Lighting and mixed reflective/emissive regions remain approximate.',name);
+    }
+  }
   applyTextures(ctx,p,tex,name);
   if(Math.abs(decomp.scale[0]-decomp.scale[1])>1e-6||decomp.distorted){let rings=times.map(t=>({position:t,radius:rad*Number(sample(profile,t))*Number(sample(scales,t)),inverted:mat.cullMode===1})),local=matrix({Position:{z:from},Scale:{x:1,y:1,z:1}}),bytes=ringObj(rings,to-from,mesh.horizontalResolution??20);bytes=transformObj(bytes,multiply(world,local));p.GeometryMode=3;p.ObjFile=safeName(name)+'.obj';p.ObjBase64=toBase64(bytes);p.ObjScale=1;p.Position=[0,0,0];p.Rotation=[0,0,0];p.Rings=null;ctx.warn('baked_scale','Non-uniform/reflected transform is baked into an OBJ; per-ring gradients are reduced to the first sample.',name);let inv=inverseColor(ctx,sample(colors,0),name);Object.assign(p,{StartColor:inv.Color,EndColor:inv.Color,StartCustomWeight:inv.CustomWeight,EndCustomWeight:inv.CustomWeight,StartGlow:inv.Glow,EndGlow:inv.Glow,StartOpacity:clamp(sample(opacities,0)),EndOpacity:clamp(sample(opacities,0))});}
+  // Compensate the target material's inherited glow gain before converting
+  // its additive angle curve. This gain is independent of trail materials.
+  if(p.Rings)for(const ring of p.Rings)ring.Glow/=p.Lit?.5:.8;
+  else{p.StartGlow/=p.Lit?.5:.8;p.EndGlow/=p.Lit?.5:.8;}
   const first=p.Rings?.[0],last=p.Rings?.at(-1);if(first){for(const [side,r] of [['Start',first],['End',last]]){p[side+'Radius']=r.Radius;p[side+'Color']=r.Color;p[side+'CustomWeight']=r.CustomWeight;p[side+'Glow']=r.Glow;p[side+'Opacity']=r.Opacity;}if(mesh.startCap&&first.Radius>1e-8)p.Rings.unshift({...first,Radius:0});if(mesh.endCap&&last.Radius>1e-8)p.Rings.push({...last,Radius:0});}
   angleTransferToVain(ctx,p,mat,name,gain);ctx.warn('note_tonemap','RGB gain retained using a rim multiplier; live note-color tonemapping differs between the mods.',name);
   if(mesh.startCap||mesh.endCap)ctx.warn('end_caps','End caps are closed with zero-radius rings; normals may differ.',name);if(!v1&&(mask.handleMask?.controlPoints||[]).some(k=>k.value!==0))ctx.warn('handle_mask','PBR handle mask is approximated separately from the sampled color.',name);
