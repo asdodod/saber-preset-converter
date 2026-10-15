@@ -64,6 +64,10 @@ The converter has no preset-name rules or bundled user examples. The same geomet
 
 Conversion now retains depth-write distinctions and transfers angular material masks. Vain angle gradients are no longer incorrectly sampled along the blade's length. Angle coordinate mapping and additive-versus-multiplicative glow differences are reported as approximations.
 
+Vain flipbook textures are sampled as separate color and glow atlases in the source preview. Forward export extracts the first frame, including frame-order flips, before resampling Advanced UVs; the whole frame grid is never treated as one static picture. Native Blur Saber flipbook playback is not transferred and is listed in the report.
+
+Vain's depth prepass writes only opaque pixels. Transparent profiles, angular opacity and texture alpha therefore disable native target depth writing, which cannot express that per-pixel rule. For an opaque part with a negative shader depth bias, the converter draws it after the other surfaces to fit its front-layer coverage. This is a layer-order approximation; intersections with other opaque geometry can differ.
+
 3D rendering uses a locally vendored Three.js 0.186.1 and OrbitControls (MIT); see vendor/three-LICENSE.txt. No external runtime CDN is used.
 
 

@@ -1,4 +1,4 @@
-import {convert} from './engine.js?v=20261015-1';
+import {convert} from './engine.js?v=20261015-4';
 self.onmessage=event=>{
   const {id,parsed,name,direction,resources,options}=event.data;
   try{const result=convert(parsed,name,direction,resources,options);self.postMessage({id,result});}

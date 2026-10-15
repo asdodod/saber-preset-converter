@@ -1,10 +1,11 @@
-import {legacyHighlight,legacyHandleGlow} from './legacy-material.js?v=20261015-1';
-import {offsetRuns,offsetTransforms} from './native-offsets.js?v=20261015-1';
-import {unzipSync,zipSync,strToU8,strFromU8,zlibSync} from './vendor/fflate.js?v=20261015-1';
-import * as s from './schema.js?v=20261015-1';
-import {identity,matrix,multiply,point,decompose,vector} from './math.js?v=20261015-1';
-import {decodeImage,imageSample} from './textures.js?v=20261015-1';
-import {vainRings,vainRingVertices,spriteObj} from './vain-geometry.js?v=20261015-1';
+import {legacyHighlight,legacyHandleGlow} from './legacy-material.js?v=20261015-4';
+import {offsetRuns,offsetTransforms} from './native-offsets.js?v=20261015-4';
+import {atlasLayout} from './texture-atlas.js?v=20261015-4';
+import {unzipSync,zipSync,strToU8,strFromU8,zlibSync} from './vendor/fflate.js?v=20261015-4';
+import * as s from './schema.js?v=20261015-4';
+import {identity,matrix,multiply,point,decompose,vector} from './math.js?v=20261015-4';
+import {decodeImage,imageSample} from './textures.js?v=20261015-4';
+import {vainRings,vainRingVertices,spriteObj} from './vain-geometry.js?v=20261015-4';
 export {zipSync,strToU8};
 export const MAX_BYTES=128*1024*1024;
 export const clamp=(v,lo=0,hi=1)=>Math.max(lo,Math.min(hi,Number(v)));
@@ -48,7 +49,33 @@ class Context{
   embed(name,folder='textures',item=''){const actual=this.asset(name,null,folder,item);return actual?toBase64(this.assets.get(folder+'/'+actual)):null;}
 }
 function equalBytes(a,b){return a.length===b.length&&a.every((v,i)=>v===b[i]);}
-function shadingWarnings(ctx,p,name){if(p.uselookdir)ctx.warn('look_direction','Fixed blur direction is not reproduced.',name);if(p.depthoffset)ctx.warn('depth_offset','Shader depth offset is not reproduced.',name);if(p.mirroronleft||![0,'Both',undefined].includes(p.side))ctx.warn('saber_side','Side restriction/mirroring is not reproduced; this part appears on both sabers.',name);if(p.rimfactor||p.rimperpendicular||(p.rimpowergradient||[]).some(k=>lower(k).value))ctx.warn('rim_shader','The VainSabers rim shader has no exact ReeSabers equivalent.',name);if(p.lit)ctx.warn('lit_shader','Lit material parameters are transferred, but Vain specular/rim lighting and the game cubemap have no exact Ree equivalent.',name);if(p.texturewrap!==undefined&&p.texturewrap!==1)ctx.warn('texture_wrap','Texture wrapping may differ.',name);for(let k of ['color','glow']){let a=p[k+'atlascount']||{},f=p[k+'atlasspeedflip']||{};if((a.x??1)!==1||(a.y??1)!==1||f.y||f.z)ctx.warn('texture_atlas','Animated texture atlases are kept as static textures.',name);}}
+function prepareVainTextures(ctx,input){
+  const p={...input,_texturesPrepared:true};ctx.textureFrames??=new Map();
+  for(const channel of ['color','glow']){
+    const count=p[channel+'atlascount']||{},speed=p[channel+'atlasspeedflip']||{},layout=atlasLayout(count,speed),name=p[channel+'texture'],encoded=p[channel+'texturebase64'];
+    if(layout.columns===1&&layout.rows===1||!name&&!encoded)continue;
+    const id=ctx.asset(name,encoded,'textures',p.name);if(!id)continue;
+    const key=JSON.stringify([id,layout]);let frameId=ctx.textureFrames.get(key);
+    if(!frameId){
+      try{const image=decodeImage(ctx.assets.get('textures/'+id)),width=Math.max(1,Math.floor(image.width/layout.columns)),height=Math.max(1,Math.floor(image.height/layout.rows)),pixels=new Uint8Array(width*height*4);
+        for(let y=0;y<height;y++)for(let x=0;x<width;x++){const u=(x+.5)/width,v=1-(y+.5)/height;pixels.set(imageSample(image,u*layout.x+layout.z,v*layout.y+layout.w,p.texturewrap??1).map(c=>Math.round(c*255)),(y*width+x)*4);}
+        frameId=ctx.add(id.replace(/\.[^.]+$/,'')+'_frame0.png',png(width,height,pixels));ctx.textureFrames.set(key,frameId);
+      }catch(error){ctx.warn('texture_atlas','Could not extract the first animation frame: '+error.message,p.name);continue;}
+    }
+    p[channel+'texture']=frameId;p[channel+'texturebase64']=null;p[channel+'atlascount']={x:1,y:1};p[channel+'atlasspeedflip']={x:1,y:0,z:0};
+    ctx.warn('texture_atlas_frame','The first '+channel+' animation frame is retained with its atlas flips; flipbook playback is not reproduced.',p.name);
+  }return p;
+}
+function sourceDepthPolicy(ctx,p,rings,texture){
+  if(p.disabledepthprepass)return false;
+  const alpha=[2,3,'Sprite','Obj'].includes(p.geometrymode)?[rings[0].opacity??1]:rings.map(r=>r.opacity??1),angle=(p.opacitymultipliergradient||[]).map(raw=>lower(raw).value??1);
+  let textureOpaque=true;
+  if(texture)try{ctx.textureOpacity??=new Map();if(!ctx.textureOpacity.has(texture)){const data=decodeImage(ctx.assets.get('textures/'+texture)).data;let opaque=true;for(let i=3;i<data.length;i+=4)if(data[i]!==255){opaque=false;break;}ctx.textureOpacity.set(texture,opaque);}textureOpaque=ctx.textureOpacity.get(texture);}catch{textureOpaque=false;}
+  if(textureOpaque&&alpha.every(v=>clamp(v)**1.5>.999)&&angle.every(v=>v>=1))return true;
+  ctx.warn('partial_depth','Transparent Vain surfaces do not write depth. The target material has no per-pixel opaque-only depth prepass; depth writing is disabled for this surface.',p.name);
+  return false;
+}
+function shadingWarnings(ctx,p,name){if(p.uselookdir)ctx.warn('look_direction','Fixed blur direction is not reproduced.',name);if(p.depthoffset)ctx.warn('depth_offset','Shader clip-space depth offset has no direct target material equivalent.',name);if(p.mirroronleft||![0,'Both',undefined].includes(p.side))ctx.warn('saber_side','Side restriction/mirroring is not reproduced; this part appears on both sabers.',name);if(p.rimfactor||p.rimperpendicular||(p.rimpowergradient||[]).some(k=>lower(k).value))ctx.warn('rim_shader','The VainSabers rim shader has no exact ReeSabers equivalent.',name);if(p.lit)ctx.warn('lit_shader','Lit material parameters are transferred, but Vain specular/rim lighting and the game cubemap have no exact Ree equivalent.',name);if(p.texturewrap!==undefined&&p.texturewrap!==1)ctx.warn('texture_wrap','Texture wrapping may differ.',name);for(let k of ['color','glow']){let a=p[k+'atlascount']||{},f=p[k+'atlasspeedflip']||{};if((a.x??1)!==1||(a.y??1)!==1||f.y||f.z)ctx.warn('texture_atlas','Animated texture atlases are kept as static textures.',name);}}
 const ringsOf=vainRings;
 export function ringObj(rings,length=1,count=20){count=clamp(Math.round(count),3,128);let out=['# Saber converter ring geometry'];for(let r of rings)for(let i=0;i<=count;i++){let a=2*Math.PI*i/count,rad=Math.abs(r.radius),sign=r.inverted?-1:1;out.push(`v ${(r.offsetx||0)+rad*Math.sin(a)} ${(r.offsety||0)+sign*rad*Math.cos(a)} ${r.position*length}`);}for(let r of rings)for(let i=0;i<=count;i++){const sign=r.inverted?-1:1;out.push(`vt ${sign*i/count+.5*(1-sign)} ${r.position+(r.uvoffset||0)}`);}for(let j=0;j<rings.length-1;j++)for(let i=0;i<count;i++){let a=j*(count+1)+i+1,b=a+1,c=a+count+2,d=a+count+1;out.push(`f ${a}/${a} ${d}/${d} ${b}/${b}`,`f ${b}/${b} ${d}/${d} ${c}/${c}`);}return strToU8(out.join('\n')+'\n');}
 function bakeRingModel(ctx,p,rings,index,tex){
@@ -102,6 +129,7 @@ function animatePart(ctx,result,p){
   result.Config.LocalTransform=s.transform();tail.Children=[result];return root;
 }
 function toReePart(ctx,p,index){
+  if(!p._texturesPrepared)p=prepareVainTextures(ctx,p);
   if(!p._nativeRings&&[1,'Advanced'].includes(p.geometrymode)){const native=advancedBlurPart(ctx,p,ringsOf(p),index);if(native)return native;}
   let name=p.name||'Part '+(index+1),config=s.common(name,p.position,p.rotation),rings=ringsOf(p),lo=Math.min(...rings.map(r=>r.position)),hi=Math.max(...rings.map(r=>r.position)),positions=rings.map(r=>hi>lo?(r.position-lo)/(hi-lo):0);
   for(let i=positions.length-2;i>=0;i--)if(positions[i]>=positions[i+1])positions[i]=Math.max(0,positions[i+1]-1e-6);for(let i=1;i<positions.length;i++)if(positions[i]<=positions[i-1])positions[i]=Math.min(1,positions[i-1]+1e-6);
@@ -119,7 +147,7 @@ function toReePart(ctx,p,index){
     mat.maskSettings.surfaceAngleMappings.alphaOverValue=s.curve(times.map(t=>[t,clamp(vainGradient(p.opacitymultipliergradient,f(t),1))]));
     ctx.warn('surface_angle_transfer','Vain Fresnel material curves mapped using a normalized-angle approximation; perpendicular view dependence and additive glow can differ.',name);
   }
-  mat.depthWrite=!p.disabledepthprepass;
+  mat.depthWrite=sourceDepthPolicy(ctx,p,rings,tex.mainTextureId);
   let mode=p.geometrymode??0,useObj=!p._nativeRings&&([2,3,'Sprite','Obj'].includes(mode)||rings.some((r,i)=>r.offsetx||r.offsety||r.uvoffset||(i&&r.position<rings[i-1].position))),model;
   if(useObj){if([3,'Obj'].includes(mode)){model=ctx.asset(p.objfile,p.objbase64,'geometry',name);if(!model){ctx.warn('missing_model','Missing OBJ replaced with a cylinder placeholder.',name);useObj=false;}}else if([2,'Sprite'].includes(mode)){model=ctx.add(`part_${index}.obj`,strToU8(spriteObj(p)),'geometry');}else model=ctx.add(`part_${index}.obj`,ringObj(rings,p.length??.1,p.ringvertsmanual??20),'geometry');}
   let result;
@@ -135,7 +163,7 @@ function toReePart(ctx,p,index){
   Object.assign(config,{MaterialSettings:mat,TexturesSettings:tex});ctx.stats.parts++;return animatePart(ctx,result,p);
 }
 function vainGradient(list,t,def,valueKey='value'){let pts=(list||[]).map(lower).sort((a,b)=>a.time-b.time);if(!pts.length)return def;if(t<=pts[0].time)return pts[0][valueKey];for(let i=1;i<pts.length;i++){let a=pts[i-1],b=pts[i];if(t<=b.time){let u=b.time>a.time?(t-a.time)/(b.time-a.time):1,e=b.easing??0;if(e===1)u*=u;else if(e===2)u*=2-u;else if(e===3)u=u<.5?2*u*u:-1+(4-2*u)*u;return lerp(a[valueKey],b[valueKey],u);}}return pts.at(-1)[valueKey];}
-function toReeTrail(ctx,p,blade,index){let name=(blade?'Blade':'Tip')+' Trail '+(index+1),pos=p.position||[0,0,1],config=s.common(name,[pos[0],pos[1],0]),masks=s.mask('trail'),cols=(p.colorgradient||[]).map(lower).map(k=>[k.time,k.color]).sort((a,b)=>a[0]-b[0]),blend=keys(p.customblendgradient||[],p.customblend??1),times=[...new Set([0,1,...Array.from({length:33},(_,i)=>i/32),...cols.map(k=>clamp(k[0])),...blend.map(k=>clamp(k[0]))])].sort((a,b)=>a-b);
+function toReeTrail(ctx,p,blade,index){p=prepareVainTextures(ctx,p);let name=(blade?'Blade':'Tip')+' Trail '+(index+1),pos=p.position||[0,0,1],config=s.common(name,[pos[0],pos[1],0]),masks=s.mask('trail'),cols=(p.colorgradient||[]).map(lower).map(k=>[k.time,k.color]).sort((a,b)=>a[0]-b[0]),blend=keys(p.customblendgradient||[],p.customblend??1),times=[...new Set([0,1,...Array.from({length:33},(_,i)=>i/32),...cols.map(k=>clamp(k[0])),...blend.map(k=>clamp(k[0]))])].sort((a,b)=>a-b);
   masks.lengthMappings.colorOverValue=s.curve(times.map(t=>[t,blended(vainGradient(p.colorgradient,t,p.color||[1,1,1],'color'),vainGradient(p.customblendgradient,t,p.customblend??1),p.glow??1)]));masks.lengthMappings.alphaOverValue=s.curve(times.map(t=>[t,clamp(p.opacity??1)*(blade?Math.pow(.9*(1-t*clamp(p.fade??1))*Math.pow(t,.02),2):.9*(1-t*clamp(p.fade??1)))]));
   if(blade)masks.widthMappings.alphaOverValue=s.curve([[0,0],[1,1]]);else masks.lengthMappings.scaleOverValue={interpolationType:0,controlPoints:[{time:0,value:0},{time:.3,value:1},{time:1,value:0}]};
   let width=p.width??.008,offset=pos[2];if(blade){let b=clamp(width);width=Math.abs(pos[2])*(1-b);offset=pos[2];if(pos[0]||pos[1])ctx.warn('trail_direction','Tilted ribbon is approximated along local Z.',name);}
@@ -144,9 +172,15 @@ function toReeTrail(ctx,p,blade,index){let name=(blade?'Blade':'Tip')+' Trail '+
   if((p.customblend??1)===0&&blend.every(([,v])=>v===0))config.ForceColorOverride=true;
   Object.assign(config,{MeshSettings:{TrailLength:Math.max(0,(p.length??140)/1000),HorizontalResolution:4,VerticalResolution:60},MaterialSettings:{trailType:blade?1:0,materialType:0,mappingType:0,offset,width:Math.max(0,width),distortionMultiplier:1,generalSettings:general,maskSettings:masks},Space:0,SpaceReference:null});if(texture){try{const image=decodeImage(ctx.assets.get('textures/'+texture));let alpha=new Uint8Array(image.width*image.height*4);for(let i=0;i<alpha.length;i+=4)alpha.fill(image.data[i+3],i,i+4);general.opacityTextureId=ctx.add('trail_'+index+'_'+(blade?'blade':'tip')+'_opacity.png',png(image.width,image.height,alpha));}catch(error){ctx.warn('texture_opacity','Could not extract trail opacity: '+error.message,name);}}if(p.noiseenabled||p.motionactivation||p.motionfadepower)ctx.warn('trail_motion','Trail noise and motion activation are not reproduced.',name);shadingWarnings(ctx,p,name);ctx.stats.trails++;return s.module('simple-trail',1,config);
 }
-function toRee(ctx,data){let q=lower(data),out=s.preset(ctx.name),parts=q.parts.map(lower);ctx.warn('shader_difference','Color, glow and motion blur differ between the two mods; compare the result in-game.');
+function materialLayers(module){return [...(module.Config?.MaterialSettings?.renderQueue!==undefined?[module.Config.MaterialSettings]:[]),...(module.Children||[]).flatMap(materialLayers)];}
+function toRee(ctx,data){let q=lower(data),out=s.preset(ctx.name),parts=q.parts.map(lower),frontLayers=[];ctx.warn('shader_difference','Color, glow and motion blur differ between the two mods; compare the result in-game.');
   function resolve(i,seen){let p=parts[i],link=p.linkedpartindex;if(Number.isInteger(link)&&link>=0&&link<parts.length&&link!==i){if(seen.has(link))throw Error('Cyclic LinkedPartIndex.');let base=copy(resolve(link,new Set([...seen,link])));for(let k of ['name','position','rotation','linkedpartindex','mirroronleft'])if(k in p)base[k]=p[k];return base;}return p;}
-  for(let i=0;i<parts.length;i++)out.Modules.push(toReePart(ctx,resolve(i,new Set([i])),i));if(q.usecustomtrails){(q.tiptrails||[]).forEach((p,i)=>out.Modules.push(toReeTrail(ctx,lower(p),false,i)));(q.bladetrails?.length?q.bladetrails:q.bladetrail?[q.bladetrail]:[]).forEach((raw,i)=>{const p=lower(raw);if(p.noiseenabled){ctx.stats.skipped++;ctx.warn('vertex_noise_omitted','Blade effect with Vertex Noise omitted; its displaced geometry cannot be reproduced by Simple Trail.', 'Blade Trail '+(i+1));}else out.Modules.push(toReeTrail(ctx,p,true,i));});}else{out.Modules.push(toReeTrail(ctx,{position:[0,0,1],width:0,length:160},true,0));ctx.warn('vanilla_trail','The game trail is approximated by a 160 ms Simple Trail.');}return out;
+  for(let i=0;i<parts.length;i++){const p=resolve(i,new Set([i])),module=toReePart(ctx,p,i);out.Modules.push(module);const layers=materialLayers(module);if(p.depthoffset<0&&layers.length&&layers.every(m=>m.depthWrite))frontLayers.push({layers,bias:p.depthoffset,name:p.name});}
+  // A shader depth bias cannot be expressed by a native tube. Opaque layers
+  // pulled toward the viewer can still cover transparent detail by drawing last.
+  let queue=Math.max(3001,...out.Modules.flatMap(materialLayers).map(m=>m.renderQueue))+1;
+  for(const layer of frontLayers.sort((a,b)=>b.bias-a.bias)){const min=Math.min(...layer.layers.map(m=>m.renderQueue));for(const mat of layer.layers)mat.renderQueue=queue+mat.renderQueue-min;queue=Math.max(...layer.layers.map(m=>m.renderQueue))+1;ctx.warn('depth_order_fit','An opaque layer with negative depth bias is drawn after the other surfaces. This fits front-layer coverage; intersections with other opaque geometry may differ.',layer.name);}
+  if(q.usecustomtrails){(q.tiptrails||[]).forEach((p,i)=>out.Modules.push(toReeTrail(ctx,lower(p),false,i)));(q.bladetrails?.length?q.bladetrails:q.bladetrail?[q.bladetrail]:[]).forEach((raw,i)=>{const p=lower(raw);if(p.noiseenabled){ctx.stats.skipped++;ctx.warn('vertex_noise_omitted','Blade effect with Vertex Noise omitted; its displaced geometry cannot be reproduced by Simple Trail.', 'Blade Trail '+(i+1));}else out.Modules.push(toReeTrail(ctx,p,true,i));});}else{out.Modules.push(toReeTrail(ctx,{position:[0,0,1],width:0,length:160},true,0));ctx.warn('vanilla_trail','The game trail is approximated by a 160 ms Simple Trail.');}return out;
 }
 
 function textureWarnings(ctx,tex,name){for(let k of ['normalMapTextureId','colorMapTextureId','metallicMapTextureId','roughnessMapTextureId','opacityTextureId'])if(tex[k]&&tex[k].toLowerCase()!=='none')ctx.warn('material_texture',k+' has no direct VainSabers equivalent.',name);if((tex.animationLayout?.totalFrames??1)>1)ctx.warn('texture_atlas','Texture animation is exported as a static atlas.',name);if(tex.uvScroll?.x||tex.uvScroll?.y||tex.mappingType)ctx.warn('texture_mapping','UV scrolling/mapping is not reproduced.',name);}
