@@ -1,4 +1,4 @@
-import {matrix,multiply,identity,vector,point} from './math.js?v=20261015-4';
+import {matrix,multiply,identity,vector,point} from './math.js?v=20261015-5';
 const axis=a=>typeof a==='string'?{X:0,Y:1,Z:2}[a]:a??0;
 const type=a=>String(a.$type||'').split(',')[0];
 export const animationTypes=new Set(['RotationAdder','RotationOscillator','PositionOscillator','HueShiftAdder','HueShiftOscillator']);
