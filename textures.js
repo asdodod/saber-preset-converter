@@ -1,5 +1,5 @@
-import decodeJpeg from './vendor/jpeg-decoder.js?v=20261014-3';
-import {unzlibSync} from './vendor/fflate.js?v=20261014-3';
+import decodeJpeg from './vendor/jpeg-decoder.js?v=20261015-1';
+import {unzlibSync} from './vendor/fflate.js?v=20261015-1';
 export function decodeImage(bytes){
   if(bytes[0]===255&&bytes[1]===216)return decodeJpeg(bytes,{useTArray:true,maxResolutionInMP:16,maxMemoryUsageInMB:128});
   if(bytes[0]!==137||bytes[1]!==80)throw Error('Texture baking supports PNG and JPEG.');

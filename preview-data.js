@@ -1,10 +1,10 @@
-import {legacyHandleGlow} from './legacy-material.js?v=20261014-3';
-import {lower,fromBase64,evaluateCurve,lerp,clamp} from './engine.js?v=20261014-3';
-import {matrix,multiply,identity} from './math.js?v=20261014-3';
-import {vainRings,vainRingVertices,spriteBuffers} from './vain-geometry.js?v=20261014-3';
+import {legacyHandleGlow} from './legacy-material.js?v=20261015-1';
+import {lower,fromBase64,evaluateCurve,lerp,clamp} from './engine.js?v=20261015-1';
+import {matrix,multiply,identity} from './math.js?v=20261015-1';
+import {vainRings,vainRingVertices,spriteBuffers} from './vain-geometry.js?v=20261015-1';
 export {vainRings};
-import {animationTypes} from './preview-animation.js?v=20261014-3';
-import * as s from './schema.js?v=20261014-3';
+import {animationTypes} from './preview-animation.js?v=20261015-1';
+import * as s from './schema.js?v=20261015-1';
 
 export function previewAssets(parsed,resources=new Map()){
   const assets=new Map(parsed.assets);for(const [name,bytes] of resources)assets.set(name,bytes);

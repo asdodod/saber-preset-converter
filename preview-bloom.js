@@ -10,12 +10,13 @@ export function gaussianWeights(sigma = 3, radius = 8) {
   return weights.map(value => value / sum);
 }
 
-export const opticsDefaults = Object.freeze({emission: 2.8, scatter: .9, core: .12});
+export const opticsDefaults = Object.freeze({emission: 2.8, scatter: .65, core: .06});
 
 // Kept alongside GLSL so the optical response can be checked numerically.
 export function exposedLight(rgb, glow, enabled = true, optics = opticsDefaults) {
   const color = rgb.map(value => Math.max(0, value));
-  const g = enabled ? Math.max(0, glow) : 0;
+  const raw = enabled ? Math.max(0, glow) : 0;
+  const g = raw / (1 + raw);
   const peak = Math.max(...color);
   const veil = optics.core * g * g * peak;
   return color.map(value => value * (1 + g * optics.emission) + veil);
@@ -30,7 +31,8 @@ uniform float emission;
 varying vec2 q;
 void main(){
   vec3 color=max(vec3(0.),texture2D(colorImage,q).rgb);
-  float glow=max(0.,texture2D(glowImage,q).r);
+  float raw=max(0.,texture2D(glowImage,q).r);
+  float glow=raw/(1.+raw);
   // Bloom is driven by the visible composited surface, not by hidden meshes.
   gl_FragColor=vec4(color*glow*emission,1.);
 }`;
@@ -59,7 +61,8 @@ vec3 toDisplay(vec3 color){
 }
 void main(){
   vec3 color=max(vec3(0.),texture2D(colorImage,q).rgb);
-  float glow=max(0.,texture2D(glowImage,q).r)*enabled;
+  float raw=max(0.,texture2D(glowImage,q).r)*enabled;
+  float glow=raw/(1.+raw);
   float peak=max(color.r,max(color.g,color.b));
   vec3 light=color*(1.+glow*emission)+vec3(core*glow*glow*peak);
   vec3 halo=texture2D(closeHalo,q).rgb*.7+texture2D(wideHalo,q).rgb*.3;

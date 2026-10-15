@@ -21,6 +21,23 @@ test('turning bloom off and zero-emission surfaces preserve their base color', (
   assert.ok(glowing[2] > glowing[0]);
 });
 
+test('very high glow retains chromatic contrast with bounded surface amplification',()=>{
+  const base=[.01,.04,.8],medium=exposedLight(base,2),high=exposedLight(base,10000);
+  assert.ok(high.every(Number.isFinite));
+  assert.ok(high[2]>high[0]*10);
+  assert.ok(high[2]<base[2]*4);
+  assert.ok(high[2]>medium[2]);
+});
+
+test('forward Lit and unlit materials carry their source emission gain',()=>{
+  for(const [lit,gain] of [[true,.5],[false,.8]]){
+    const part={...s.vainPart('Emission'),Lit:lit,StartGlow:2,EndGlow:2};
+    const output=convert({data:{Parts:[part],UseCustomTrails:true},assets:new Map()},'Any filename','ree');
+    const color=output.data.Modules[0].Config.MaterialSettings.maskSettings.bladeMappings.colorOverValue;
+    assert.equal(color.controlPoints[1].value.a,2*gain);
+  }
+});
+
 test('legacy reflective handles retain lighting without becoming white emitters', () => {
   const mask = s.mask();
   mask.handleMask = s.constant(1);

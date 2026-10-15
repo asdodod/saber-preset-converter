@@ -24,9 +24,9 @@ test('opacity transfer respects the Vain shader exponent in both directions',()=
   const forward=convert(part({StartOpacity:.25,EndOpacity:.25}),'Arbitrary','ree');assert.equal(evaluateCurve(forward.data.Modules[0].Config.MaterialSettings.maskSettings.bladeMappings.alphaOverValue,.5),.125);
   const reverse=convert(parsed(forward.data),'Another name','vain');assert.ok(Math.abs(reverse.data.Parts[0].Rings[20].Opacity-.25)<1e-8);
 });
-test('offset Advanced models keep angular masks instead of baking angles along Z',()=>{
+test('constant Advanced offsets retain native blur and angular masks',()=>{
   const data=part({GeometryMode:1,Length:.2,Rings:[{Position:0,Radius:.01,OffsetX:.005,Color:[0,0,0],CustomWeight:1,Glow:1,Opacity:1},{Position:1,Radius:.02,OffsetX:.005,Color:[0,0,0],CustomWeight:1,Glow:1,Opacity:1}],RimPowerGradient:[{Time:0,Value:-.8},{Time:1,Value:1}],GlowAddendGradient:[{Time:0,Value:0},{Time:1,Value:2}],OpacityMultiplierGradient:[{Time:0,Value:.2},{Time:1,Value:1}]});
-  const result=convert(data,'Not Flame','ree'),c=result.data.Modules[0].Config;assert.equal(result.data.Modules[0].ModuleId,'reezonate.custom-model');assert.ok(evaluateCurve(c.MaterialSettings.maskSettings.surfaceAngleMappings.alphaOverValue,0)<.3);const glow=decodeImage(result.assets.get('textures/'+c.TexturesSettings.glowMapTextureId));assert.ok(glow.data.every((v,i)=>i%4===3||v===255));
+  const result=convert(data,'Not Flame','ree');const list=[];function visit(ms){for(const m of ms){list.push(m);visit(m.Children||[]);}}visit(result.data.Modules);const native=list.find(m=>m.ModuleId==='reezonate.blur-saber'),c=native.Config;assert.equal(list.some(m=>m.ModuleId==='reezonate.custom-model'),false);assert.ok(c.MaterialSettings.blurFrames>0);assert.ok(evaluateCurve(c.MaterialSettings.maskSettings.surfaceAngleMappings.alphaOverValue,0)<.3);assert.equal(evaluateCurve(c.MaterialSettings.maskSettings.bladeMappings.colorOverValue,.5).a,.8);
 });
 test('separate opacity texture and UV tiling are combined for Vain output',()=>{
   const m=s.module('custom-model',1,{...s.common('Masked model'),MeshSettings:{modelId:'plane.obj',scale:1},MaterialSettings:{...s.material('model'),color:s.color([1,0,0]),opacity:.5},TexturesSettings:{...s.textures(),opacityTextureId:'alpha.png',tilingLayout:{x:2,y:1,z:0,w:0}}});
@@ -45,4 +45,10 @@ test('native parent rotation moves children around their parent pivot',()=>{
   const root=s.empty('Orbit');root.Config.RotationSpeed=s.vec([0,0,360]);const child=s.module('blur-saber',2,{...s.common('Sphere',[.02,0,0]),MeshSettings:{radius:.01,saberProfile:s.constant(1)},MaterialSettings:s.material()});root.Children=[child];
   const data=buildPreview(parsed({Modules:[root]})),a=point(animatedWorld(data.parts[0],0),[0,0,0]),b=point(animatedWorld(data.parts[0],.25),[0,0,0]);assert.ok(Math.abs(a[0]-.02)<1e-8);assert.ok(Math.abs(b[1]-.02)<1e-8);assert.ok(Math.abs(b[0])<1e-8);
   const history=animatedTrailCenters({kind:'ree',transforms:data.parts[0].transforms,p:{MeshSettings:{TrailLength:.25},MaterialSettings:{offset:0}}},.25,2);assert.ok(Math.abs(history[0][1]-.02)<1e-8);assert.ok(Math.abs(history[1][0]-.02)<1e-8);
+});
+
+test('tilted Vain rotations retain the same Euler axes at several animation times',()=>{
+  const source=part({GeometryMode:2,Position:[.03,.02,-.1],Rotation:[96,90,-90],Animators:[{$type:'RotationAdder, VainSabers',Axis:0,Speed:180},{$type:'RotationAdder, VainSabers',Axis:2,Speed:21}]});
+  const output=convert(source,'Any animated sprite','ree'),a=buildPreview(source).parts[0],b=buildPreview({data:output.data,assets:output.assets}).parts[0];
+  for(const time of [0,.13,.5,1.7]){const before=animatedWorld(a,time),after=animatedWorld(b,time);assert.ok(before.every((v,i)=>Math.abs(v-after[i])<1e-9));}
 });
